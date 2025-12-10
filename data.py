@@ -21,6 +21,16 @@ class HatefulMemes(Dataset):
 		self.img_dir = img_dir
 		self.proc = clip_processor
 		self.aug = aug
+		
+		# Define augmentations (only applied if aug=True)
+		# Note: We avoid HorizontalFlip because it makes embedded text unreadable.
+		from torchvision import transforms
+		self.transforms = transforms.Compose([
+			transforms.RandomResizedCrop(224, scale=(0.85, 1.0), ratio=(0.9, 1.1)),
+			transforms.RandomRotation(degrees=5),
+			transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+		])
+		
 		# Read JSON Lines
 		self.df = pd.read_json(jsonl_path, lines=True)
 		# Normalize expected columns (allow some common variations)
@@ -49,14 +59,24 @@ class HatefulMemes(Dataset):
 			raise ValueError(f"Missing required columns in {jsonl_path}: {missing}")
 
 		# Normalize image paths to filenames (JSONL may contain 'img/XXXX.png')
-		self.df["img"] = self.df["img"].astype(str).apply(lambda p: os.path.basename(p.replace("\\", "/")))
+		# ONLY if they are not absolute paths.
+		def _clean_path(p):
+			p = str(p)
+			if os.path.isabs(p):
+				return p
+			return os.path.basename(p.replace("\\", "/"))
+		self.df["img"] = self.df["img"].apply(_clean_path)
 
 	def __len__(self) -> int:
 		return len(self.df)
 
 	def __getitem__(self, index: int) -> Dict[str, Any]:
 		row = self.df.iloc[index]
-		img_path = os.path.join(self.img_dir, row["img"])
+		img_name = row["img"]
+		if os.path.isabs(img_name):
+			img_path = img_name
+		else:
+			img_path = os.path.join(self.img_dir, img_name)
 		# Handle truncated/corrupt images gracefully
 		ImageFile.LOAD_TRUNCATED_IMAGES = True
 		try:
@@ -65,6 +85,11 @@ class HatefulMemes(Dataset):
 			# Fallback to a blank image to avoid dataloader hangs
 			print(f"[data] Warning: failed to load image '{img_path}': {e}. Using a blank image.")
 			image = Image.new("RGB", (224, 224), (0, 0, 0))
+			
+		# Apply augmentations if enabled
+		if self.aug:
+			image = self.transforms(image)
+
 		text = str(row["text"])
 		# label may be missing (e.g., test set); use -1 sentinel when absent
 		if "label" in self.df.columns and pd.notna(row["label"]):
@@ -76,6 +101,7 @@ class HatefulMemes(Dataset):
 		label = torch.tensor(label_val, dtype=torch.float32)
 
 		# Let CLIPProcessor handle resizing/normalization
+		# If the image was cropped by transforms, CLIPProcessor will resize it back to 224 (or whatever it needs)
 		enc = self.proc(
 			text=[text],
 			images=image,

@@ -42,23 +42,26 @@ archive/data/
 
 ---
 
-## 3. Training (from scratch)
+## 3. Training (Improved Quality)
 
-Run from the repository root:
+Run from the repository root. We have upgraded the system to use:
+- **Backbone**: `openai/clip-vit-large-patch14` (High performance)
+- **Loss**: Focal Loss (Better hard example mining)
+- **Augmentation**: RandomResizedCrop, Rotation, ColorJitter (Robustness)
 
 ```powershell
 python train.py `
-  --img_dir "archive/data/img" `
-  --train_json "archive/data/train.jsonl" `
-  --dev_json "archive/data/dev.jsonl" `
-  --test_json "archive/data/test.jsonl" `
+  --img_dir "datasets/Facebook Memes/data/img" `
+  --train_json "datasets/Facebook Memes/data/train.jsonl" `
+  --dev_json "datasets/Facebook Memes/data/dev.jsonl" `
+  --test_json "datasets/Facebook Memes/data/test.jsonl" `
   --fp16 `
   --lora `
-  --unfreeze_epoch 6 `
+  --clip "openai/clip-vit-large-patch14" `
   --batch 16 `
   --accum 2 `
-  --epochs 15 `
-  --out "runs/mmbt_clip_b32"
+  --epochs 10 `
+  --out "runs/mmbt_vit_large_focal"
 ```
 
 Key flags:

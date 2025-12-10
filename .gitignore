@@ -1,5 +1,5 @@
 # Dataset folder (large files)
-archive/
+datasets/
 
 # Training outputs and checkpoints
 runs/
