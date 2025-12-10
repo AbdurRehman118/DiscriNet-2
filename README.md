@@ -1,156 +1,86 @@
-# MMBT-CLIP Hateful Memes (RTX-3060 Friendly)
+# Hateful Memes Detector (MMBT-CLIP + Dynamic Policy Gating)
 
-Lightweight multimodal (image + text) classifier for the Facebook Hateful Memes dataset.  
-Uses CLIP encoders with a tiny bi-transformer fusion head, fp16, gradient accumulation, and optional LoRA adapters—designed to fit comfortably on a 12 GB RTX-3060.
+A robust, multimodal hate speech detection system designed for the Facebook Hateful Memes dataset. It combines a state-of-the-art **MMBT-CLIP** architecture with a novel **Dynamic Policy Gating** mechanism and high-accuracy **Gemini OCR**.
 
 ---
 
-## 1. Environment Setup
+## 🚀 Key Features
 
-1. Install Python 3.10+ (Anaconda/Miniconda recommended).
-2. Create/activate your environment (example with `conda`):
+### 1. **MMBT-CLIP Architecture** (ViT-Large)
+- **Visual Encoder**: `openai/clip-vit-large-patch14`
+- **Fusion**: Multimodal Bi-Transformer (MMBT) effectively combines image and text embeddings.
+- **Optimization**: Uses Focal Loss for hard example mining and LoRA adapters for efficient fine-tuning on consumer GPUs (RTX 3060 supported).
 
+### 2. **Dynamic Policy Gating** ("Knowledge Ensembling")
+Instead of a simple black-box classifier, the system references a database of known hateful policies/narratives.
+- **Retrieval**: Finds the most similar policy using CLIP embedding similarity.
+- **Gating**: If the similarity exceeds a learned threshold (`0.28`), the policy score is dynamically boosted in the final prediction.
+- **Benefit**: Increases sensitivity to dog whistles and coded language.
+
+### 3. **Smart OCR (Gemini API)**
+- **Engine**: Uses **Google Gemini 2.0 Flash / 1.5 Flash** for superior text extraction compared to standard OCR tools.
+- **Robustness**: Implements a smart fallback loop. If the primary model hits a Free Tier quota limit (`429`), it automatically switches to alternative models (`Lite`, `Experimental`) to ensure continuous operation.
+- **Transparency**: Hardcoded API configuration for seamless "plug-and-play" testing.
+
+---
+
+## 🛠️ Installation
+
+1. **Environment Setup**:
    ```powershell
    conda create -n hateful_memes python=3.10
    conda activate hateful_memes
-   ```
-
-3. Install dependencies:
-
-   ```powershell
    pip install -r env.txt
    ```
 
----
-
-## 2. Dataset Layout
-
-Place the official Hateful Memes JSONL splits and images under `archive/data/`:
-
-```
-archive/data/
-├── img/
-│   ├── 01235.png
-│   ├── ...
-├── train.jsonl
-├── dev.jsonl
-└── test.jsonl   # labels may be missing (official test split)
-```
-
-- `img` paths in JSONL can include prefixes like `img/`; the loader strips them automatically.
-- If your JSONL column names differ (e.g., `filename`), common variants are auto-mapped.
+2. **Dataset**:
+   Place the Facebook Hateful Memes JSONL files in `datasets/Facebook Memes/data/`.
 
 ---
 
-## 3. Training (Improved Quality)
+## 💻 Usage
 
-Run from the repository root. We have upgraded the system to use:
-- **Backbone**: `openai/clip-vit-large-patch14` (High performance)
-- **Loss**: Focal Loss (Better hard example mining)
-- **Augmentation**: RandomResizedCrop, Rotation, ColorJitter (Robustness)
-
+### 1. Interactive Web Interface (Inference)
+Launch the Gradio UI to test the model with your own memes.
 ```powershell
-python train.py `
-  --img_dir "datasets/Facebook Memes/data/img" `
-  --train_json "datasets/Facebook Memes/data/train.jsonl" `
-  --dev_json "datasets/Facebook Memes/data/dev.jsonl" `
-  --test_json "datasets/Facebook Memes/data/test.jsonl" `
-  --fp16 `
-  --lora `
-  --clip "openai/clip-vit-large-patch14" `
-  --batch 16 `
-  --accum 2 `
-  --epochs 10 `
-  --out "runs/mmbt_vit_large_focal"
+python app.py
 ```
+- **OCR**: Leave the "Caption" field empty. The app will use Gemini to extract text automatically.
+- **Policy**: The result will show which policy was matched and if it triggered a "Policy Boost".
 
-Key flags:
-- `--fp16` enables mixed precision.
-- `--lora` enables LoRA adapters (keeps VRAM low).
-- `--unfreeze_epoch 6` starts LoRA/base fine-tuning after 6 epochs.
-- `--batch 16 --accum 2` = effective batch size 32 with grad accumulation.
-
-Output directory (`--out`) stores:
-- `best.pt` (best dev ROC-AUC, includes threshold)
-- `last.pt` (latest checkpoint with optimizer/scheduler)
-- `args.json` (run configuration)
-- `confusion.npy` (if test labels exist)
-- `sample_*.png` (visualizations)
-- `preds_test.csv` (test predictions if labels missing)
-
----
-
-## 4. Resume Training
-
-To resume from the latest checkpoint:
-
+### 2. Training
+To retrain the model on the Facebook Memes dataset:
 ```powershell
-python train.py `
-  --img_dir "archive/data/img" `
-  --train_json "archive/data/train.jsonl" `
-  --dev_json "archive/data/dev.jsonl" `
-  --test_json "archive/data/test.jsonl" `
-  --fp16 `
-  --lora `
-  --unfreeze_epoch 6 `
-  --batch 16 `
-  --accum 2 `
-  --epochs 15 `
-  --out "runs/mmbt_clip_b32" `
-  --resume "runs/mmbt_clip_b32/last.pt"
+./run_facebook.ps1
 ```
+*(See `run_facebook.ps1` for detailed hyperparameters like batch size, learning rate, and epochs)*
 
-Make sure flags match the original run so optimizer shapes are consistent.
-
----
-
-## 5. Evaluation & Outputs
-
-During training:
-- Primary metric: ROC-AUC (dev set).
-- Secondary metrics: PR-AUC, F1, Accuracy at the dev-selected threshold.
-- Best checkpoint, selected by dev AUC, stores the threshold (`thr`) for inference.
-
-After training:
-- If the test split has labels → prints test metrics and saves `confusion.npy`.
-- If test labels are absent (official release) → saves `preds_test.csv` with columns `img,text,prob`.
-
-To inspect the saved threshold:
-
+### 3. Analysis
+Generate performance metrics and ROC curves:
 ```powershell
-python - << 'PY'
-import torch
-ckpt = torch.load("runs/mmbt_clip_b32/best.pt", map_location="cpu")
-print("Best dev AUC:", ckpt["auc"], "Threshold:", ckpt["thr"])
-PY
+python analyze_results.py
 ```
+Outputs are saved to `results/facebook_analysis_dynamic/`.
 
 ---
 
-## 6. Tips & Tweaks
-
-- **Fast processor**: add `--use_fast_processor` flag (or edit `train.py`) to use CLIP’s fast image processor.
-- **DataLoader workers**: on Windows keep `--num_workers 0` (default). Increase gradually if stable.
-- **SDPA warning**: harmless cuDNN note about attention strides. To silence:
-
-  ```python
-  from torch.backends.cuda import sdp_kernel
-  sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=False)
-  ```
-
-- **Checkpoint safety**: when loading from untrusted sources, set `torch.load(..., weights_only=True)` (PyTorch >= 2.2).
+## 📊 Performance
+- **ROC-AUC**: ~0.766 (Dev Set)
+- **Accuracy**: ~71.4% (Dynamic Gating)
+- **F1 Score**: ~0.730
 
 ---
 
-## 7. FAQ
-
-- **VRAM usage**: ~10–11 GB on RTX-3060 with the default config (fp16 + grad accumulation).
-- **LoRA optional?** Yes. Omit `--lora` to train just the fusion head.
-- **Change projection dim?** `--hdim 256` (default). Increase to 384 if memory allows.
-- **Different splits/paths?** Point `--img_dir`, `--train_json`, etc., to your locations.
+## 📂 Project Structure
+- `app.py`: Gradio Web UI with Gemini OCR & Policy logic.
+- `model.py`: MMBT-CLIP model definition.
+- `train.py`: Main training loop with Focal Loss & Gradient Accumulation.
+- `infer_with_policy.py`: Offline inference script.
+- `policies/`: Database of policy texts for retrieval.
+- `datasets/`: Data storage.
 
 ---
 
-Happy training! For debugging or extension ideas (SigLIP, FiLM, contrastive loss), see comments in `train.py` / `model.py`.
+**Note**: This project uses the Facebook Hateful Memes dataset. Ensure you comply with its license terms.
 
 
