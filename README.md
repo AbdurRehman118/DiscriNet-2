@@ -115,4 +115,4 @@ python prepare_combined_dataset.py
 Discri-Net is designed for academic research and platform moderation assistance. While highly accurate, the RAG reasoning should be used as a "copilot" for human moderators to ensure contextual nuance is always preserved.
 
 ---
-*Developed by **Muhammad Taha Mustafa** as part of the Discri-Net Final Year Project.*
+*Developed by **Abdur Rehman** as part of the Discri-Net Final Year Project.*
