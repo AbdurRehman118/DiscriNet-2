@@ -1,0 +1,20 @@
+=== Comparative Analysis ===
+
+Base MMBT:
+  AUC: 0.7660
+  AP:  0.7586
+  F1:  0.7273
+  Acc: 0.7060
+
+Policy Scorer:
+  AUC: 0.5192
+  AP:  0.5149
+  F1:  0.6676
+  Acc: 0.5080
+
+Ensemble (Alpha=0.75):
+  AUC: 0.7665
+  AP:  0.7611
+  F1:  0.7314
+  Acc: 0.7180
+

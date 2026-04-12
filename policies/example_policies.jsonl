@@ -1,0 +1,53 @@
+{"id": 1, "text": "Content that dehumanizes people based on race, ethnicity, or nationality is hate speech"}
+{"id": 2, "text": "Slurs, epithets, or derogatory language targeting racial or ethnic groups is hate speech"}
+{"id": 3, "text": "Threats or calls for violence against religious groups or minorities is hate speech"}
+{"id": 4, "text": "Content that stereotypes or demeans people based on gender or sexual orientation is hate speech"}
+{"id": 5, "text": "Memes that mock or belittle people with disabilities or mental health conditions is hate speech"}
+{"id": 6, "text": "Content promoting hate groups, extremist ideologies, or genocide denial is hate speech"}
+{"id": 7, "text": "Jokes or memes that use offensive slurs even in a humorous context can be hate speech"}
+{"id": 8, "text": "Content that encourages exclusion, segregation, or expulsion of immigrant groups is hate speech"}
+{"id": 9, "text": "Memes that spread false stereotypes about crime rates or behavior by racial groups is hate speech"}
+{"id": 10, "text": "Content that glorifies historical acts of violence or oppression against minorities is hate speech"}
+{"id": 11, "text": "Content comparing people to animals, objects, or diseases based on protected characteristics is hate speech"}
+{"id": 12, "text": "Memes that normalize or trivialize sexual violence, rape, or domestic abuse is hate speech"}
+{"id": 13, "text": "Content that promotes conspiracy theories targeting specific racial, religious, or ethnic groups is hate speech"}
+{"id": 14, "text": "Memes using coded language or dog whistles to express hate while avoiding direct slurs is hate speech"}
+{"id": 15, "text": "Content that denies or minimizes the suffering of groups who experienced genocide or mass violence is hate speech"}
+{"id": 16, "text": "Memes that suggest certain groups are inherently inferior, dangerous, or subhuman is hate speech"}
+{"id": 17, "text": "Content encouraging discrimination in employment, housing, or public services based on protected characteristics is hate speech"}
+{"id": 18, "text": "Memes that mock victims of hate crimes, police brutality, or systemic oppression is hate speech"}
+{"id": 19, "text": "Content that promotes forced assimilation or cultural erasure of minority groups is hate speech"}
+{"id": 20, "text": "Memes using Holocaust imagery, Nazi symbols, or genocide references to make jokes is hate speech"}
+{"id": 21, "text": "Content that suggests certain groups should be eliminated, removed, or prevented from reproducing is hate speech"}
+{"id": 22, "text": "Memes that portray transgender people as deceptive, predatory, or mentally ill is hate speech"}
+{"id": 23, "text": "Content that romanticizes or justifies colonialism, slavery, or historical oppression is hate speech"}
+{"id": 24, "text": "Memes that spread false information linking crime, terrorism, or disease to specific racial or religious groups is hate speech"}
+{"id": 25, "text": "Content that encourages harassment, doxxing, or targeting of individuals based on their identity is hate speech"}
+{"id": 26, "text": "Content that promotes discrimination or hatred based on caste or social hierarchy is hate speech", "category": "caste"}
+{"id": 27, "text": "Memes that use coded language like 'triple parentheses' or specific numeric codes (e.g., 14/88) to promote white supremacy is hate speech", "category": "coded"}
+{"id": 28, "text": "Dehumanizing comparisons of immigrant or ethnic groups to invasive species, pests, or diseases is hate speech", "category": "dehumanization"}
+{"id": 29, "text": "Content that promotes the 'Great Replacement' or similar conspiracy theories targeting ethnic/religious groups is hate speech", "category": "conspiracy"}
+{"id": 30, "text": "Memes that mock or trivialize the history of slavery, Jim Crow, or systemic racial segregation are hate speech", "category": "historical"}
+{"id": 31, "text": "Content that suggests women are inherently intellectually inferior or should be denied fundamental rights is hate speech", "category": "gender"}
+{"id": 32, "text": "Mocking individuals for their neurodivergence, such as autism or ADHD, using derogatory memes is hate speech", "category": "disability"}
+{"id": 33, "text": "Content that equates gender-affirming care with 'mutilation' or promotes violence against the LGBTQ+ community is hate speech", "category": "gender_identity"}
+{"id": 34, "text": "Memes that promote antisemitic tropes about global control, financial manipulation, or blood libel are hate speech", "category": "religion"}
+{"id": 35, "text": "Content that celebrates the lynching or extrajudicial killing of individuals based on race is hate speech", "category": "violence"}
+{"id": 36, "text": "Memes that portray indigenous people as 'savages', 'uncivilized', or naturally prone to substance abuse are hate speech", "category": "ethnicity"}
+{"id": 37, "text": "Content that encourages the forced removal or 'cleansing' of specific neighborhoods based on demographic makeup is hate speech", "category": "violence"}
+{"id": 38, "text": "Memes that use 'dog whistles' to suggest certain racial groups are a biological threat to others is hate speech", "category": "dehumanization"}
+{"id": 39, "text": "Content that mocks the victims of the Stolen Generations or residential schools is hate speech", "category": "historical"}
+{"id": 40, "text": "Memes that trivialize or joke about 'corrective rape' targeting the LGBTQ+ community are hate speech", "category": "gender_identity"}
+{"id": 41, "text": "Content that promotes 'race science' or 'eugenics' to suggest biological inferiority of groups is hate speech", "category": "dehumanization"}
+{"id": 42, "text": "Memes that use caricature style imagery to mock religious clothing, such as Hijabs or Turbans, in a derogatory way is hate speech", "category": "religion"}
+{"id": 43, "text": "Content that suggests veterans with PTSD are 'broken' or 'dangerous' in a way that belittles their service or condition can be hate speech", "category": "disability"}
+{"id": 44, "text": "Memes that encourage the 'doxxing' of activists specifically because of their racial or religious identity is hate speech", "category": "harassment"}
+{"id": 45, "text": "Content that celebrates historical massacres of civilian populations during colonial expansion is hate speech", "category": "historical"}
+{"id": 46, "text": "Memes that portray asexual or non-binary people as 'confused' or 'attention-seeking' in a demeaning way can be hate speech", "category": "gender_identity"}
+{"id": 47, "text": "Content that promotes the exclusion of people from public places based on the language they speak is hate speech", "category": "nationality"}
+{"id": 48, "text": "Memes that joke about the 'disappearance' of political dissidents or ethnic minorities under authoritarian regimes is hate speech", "category": "violence"}
+{"id": 49, "text": "Content that uses 'ironic' humor to normalize the use of the N-word or other high-harm slurs is hate speech", "category": "slurs"}
+{"id": 50, "text": "Memes that suggest specific ethnic groups are responsible for 'ruining' the economy or taking jobs through 'infiltration' is hate speech", "category": "xenophobia"}
+{"id": 51, "text": "Explicit sexual content, nudity, or pornographic imagery is NSFW/Adult content (UNWANTED)", "category": "nsfw"}
+{"id": 52, "text": "Graphic violence, gore, or depictions of bodily harm is GORE/Disturbing content (UNWANTED)", "category": "gore"}
+{"id": 53, "text": "Severe vulgarity, profanity, or extreme cursing without a target is VULGAR content (UNWANTED)", "category": "vulgar"}
