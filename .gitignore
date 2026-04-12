@@ -1,0 +1,52 @@
+# Dataset folder (large files)
+datasets/
+
+# Training outputs and checkpoints
+runs/
+*.pt
+*.pth
+*.ckpt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pytorch_env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs and outputs
+*.log
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.npy
+*.npz
+
+# Model outputs (keep structure, ignore contents)
+!runs/.gitkeep
+Testing.mp4
