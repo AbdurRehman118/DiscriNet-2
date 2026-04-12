@@ -1,86 +1,118 @@
-# Hateful Memes Detector (MMBT-CLIP + Dynamic Policy Gating)
+# 🛡️ Discri-Net: Hate Speech Guard
 
-A robust, multimodal hate speech detection system designed for the Facebook Hateful Memes dataset. It combines a state-of-the-art **MMBT-CLIP** architecture with a novel **Dynamic Policy Gating** mechanism and high-accuracy **Gemini OCR**.
+**Discri-Net** is a production-grade multimodal hate speech detection system designed to identify and explain harmful content in memes. By fusing state-of-the-art vision-language models with Retrieval-Augmented Generation (RAG), Discri-Net doesn't just flag content—it provides policy-grounded reasoning for every decision.
 
 ---
 
 ## 🚀 Key Features
 
-### 1. **MMBT-CLIP Architecture** (ViT-Large)
-- **Visual Encoder**: `openai/clip-vit-large-patch14`
-- **Fusion**: Multimodal Bi-Transformer (MMBT) effectively combines image and text embeddings.
-- **Optimization**: Uses Focal Loss for hard example mining and LoRA adapters for efficient fine-tuning on consumer GPUs (RTX 3060 supported).
-
-### 2. **Dynamic Policy Gating** ("Knowledge Ensembling")
-Instead of a simple black-box classifier, the system references a database of known hateful policies/narratives.
-- **Retrieval**: Finds the most similar policy using CLIP embedding similarity.
-- **Gating**: If the similarity exceeds a learned threshold (`0.28`), the policy score is dynamically boosted in the final prediction.
-- **Benefit**: Increases sensitivity to dog whistles and coded language.
-
-### 3. **Smart OCR (Gemini API)**
-- **Engine**: Uses **Google Gemini 2.0 Flash / 1.5 Flash** for superior text extraction compared to standard OCR tools.
-- **Robustness**: Implements a smart fallback loop. If the primary model hits a Free Tier quota limit (`429`), it automatically switches to alternative models (`Lite`, `Experimental`) to ensure continuous operation.
-- **Transparency**: Hardcoded API configuration for seamless "plug-and-play" testing.
+- **Multimodal Fusion**: Leverages **MMBT-CLIP** (ViT-Large-Patch14) to jointly analyze image pixels and text captions.
+- **Dynamic Policy Gating**: An innovative ensemble mechanism that boosts detection confidence when content aligns with a curated knowledge base of safety policies.
+- **RAG Reasoner (Gemini)**: Powered by Google Gemini, the system generates natural language explanations based on retrieved safety guidelines (e.g., hate speech vs. vulgarity).
+- **Automated OCR**: Built-in fallback to Gemini-Flash for extracting text from images when captions are missing.
+- **Premium UI**: A modern, glassmorphic Gradio interface with real-time progress tracking and detailed technical breakdowns.
 
 ---
 
-## 🛠️ Installation
+## 🏗️ Architecture
 
-1. **Environment Setup**:
-   ```powershell
-   conda create -n hateful_memes python=3.10
-   conda activate hateful_memes
-   pip install -r env.txt
+Discri-Net follows a "Consensus with Reasoning" pipeline:
+
+```mermaid
+graph TD
+    A[Input: Image + Text] --> B{OCR Needed?}
+    B -- Yes --> C[Gemini OCR Extraction]
+    B -- No --> D[Multimodal Input]
+    C --> D
+    
+    D --> E[MMBT-CLIP Classifier]
+    D --> F[Policy Vector Retrieval]
+    
+    E --> G[Base Probability]
+    F --> H[CLIP Similarity Score]
+    
+    G & H --> I[Dynamic Gating Ensemble]
+    I --> J[Final Label: Hateful/Safe]
+    
+    J --> K[FAISS Policy Retrieval]
+    K --> L[Gemini RAG Reasoner]
+    L --> M[Final Output + Explanation]
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+| :--- | :--- |
+| **Backbone** | PyTorch, HuggingFace Transformers |
+| **Vision-Language** | OpenAI CLIP (ViT-Large-Patch14) |
+| **Reasoning Engine** | Google Gemini (Flash/Pro) |
+| **Vector Search** | FAISS, LangChain |
+| **Embeddings** | Sentence-Transformers (all-MiniLM-L6-v2) |
+| **Frontend** | Gradio (Glassmorphic Design) |
+
+---
+
+## 📦 Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/MuhammadTahaMustafa-06/Discri-Net-FYP-
+   cd Discri-Net-FYP-
    ```
 
-2. **Dataset**:
-   Place the Facebook Hateful Memes JSONL files in `datasets/Facebook Memes/data/`.
+2. **Install Dependencies**:
+   ```bash
+   pip install -r env.txt
+   ```
+   *Note: Ensure you have `torch` and `torchvision` installed for your specific CUDA version.*
+
+3. **Environment Setup**:
+   Create a `.env` file in the root directory:
+   ```env
+   GEMINI_API_KEY=your_api_key_here
+   ```
 
 ---
 
-## 💻 Usage
+## 🚀 Usage
 
-### 1. Interactive Web Interface (Inference)
-Launch the Gradio UI to test the model with your own memes.
-```powershell
+### Running the UI
+Launch the interactive web interface:
+```bash
 python app.py
 ```
-- **OCR**: Leave the "Caption" field empty. The app will use Gemini to extract text automatically.
-- **Policy**: The result will show which policy was matched and if it triggered a "Policy Boost".
 
-### 2. Training
-To retrain the model on the Facebook Memes dataset:
-```powershell
-./run_facebook.ps1
+### Training
+To train the MMBT-CLIP model from scratch or fine-tune:
+```bash
+python train.py --config configs/your_config.yaml
 ```
-*(See `run_facebook.ps1` for detailed hyperparameters like batch size, learning rate, and epochs)*
 
-### 3. Analysis
-Generate performance metrics and ROC curves:
-```powershell
-python analyze_results.py
+### Dataset Preparation
+Prepare standard datasets (Facebook Hateful Memes, MMHS):
+```bash
+python prepare_mmhs.py
+python prepare_combined_dataset.py
 ```
-Outputs are saved to `results/facebook_analysis_dynamic/`.
 
 ---
 
-## 📊 Performance
-- **ROC-AUC**: ~0.766 (Dev Set)
-- **Accuracy**: ~71.4% (Dynamic Gating)
-- **F1 Score**: ~0.730
+## 📂 Directory Structure
+
+- `app.py`: Main entry point for the Gradio interface.
+- `model.py`: MMBT-CLIP architecture and projection logic.
+- `langchain_rag.py`: RAG pipeline and Gemini LLM integration.
+- `policy_rag.py`: Utilities for policy indexing and retrieval.
+- `policies/`: Contains policy text (`example_policies.jsonl`) and pre-computed embeddings.
+- `runs/`: Directory for saved model checkpoints.
+- `results/`: Analysis reports and ensemble parameters.
 
 ---
 
-## 📂 Project Structure
-- `app.py`: Gradio Web UI with Gemini OCR & Policy logic.
-- `model.py`: MMBT-CLIP model definition.
-- `train.py`: Main training loop with Focal Loss & Gradient Accumulation.
-- `infer_with_policy.py`: Offline inference script.
-- `policies/`: Database of policy texts for retrieval.
-- `datasets/`: Data storage.
+## ⚖️ Safety & Ethics
+Discri-Net is designed for academic research and platform moderation assistance. While highly accurate, the RAG reasoning should be used as a "copilot" for human moderators to ensure contextual nuance is always preserved.
 
 ---
-
-**Note**: This project uses the Facebook Hateful Memes dataset. Ensure you comply with its license terms.
-
-
+*Developed by **Muhammad Taha Mustafa** as part of the Discri-Net Final Year Project.*
