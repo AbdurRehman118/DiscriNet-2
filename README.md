@@ -58,7 +58,7 @@ graph TD
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/MuhammadTahaMustafa-06/Discri-Net-FYP-
+   git clone https://github.com/AbdurRehman118/DiscriNet-2
    cd Discri-Net-FYP-
    ```
 
