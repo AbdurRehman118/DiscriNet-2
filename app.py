@@ -907,7 +907,7 @@ def show_skeleton():
     return SKELETON_HTML
 
 
-with gr.Blocks(css=CSS, theme=THEME, title="Discri-Net") as demo:
+with gr.Blocks(title="Discri-Net") as demo:
     with gr.Column(elem_classes=["app-wrapper"]):
 
         # ── Header ────────────────────────────────
@@ -1012,4 +1012,10 @@ with gr.Blocks(css=CSS, theme=THEME, title="Discri-Net") as demo:
         )
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch(
+        server_name="127.0.0.1",
+        server_port=7860,
+        share=True,
+        css=CSS,
+        theme=THEME,
+    )
