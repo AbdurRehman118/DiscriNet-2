@@ -69,7 +69,6 @@ jobs:
             --exclude '.git' \
             --exclude '__pycache__' \
             --exclude '.env' \
-            --exclude 'venv/' \
             --exclude 'logs/' \
             --exclude 'runs/' \
             --exclude 'results/' \
@@ -77,31 +76,6 @@ jobs:
             --exclude 'app.pid' \
             --exclude '*.pyc' \
             ./ ec2:${{ env.EC2_APP_DIR }}/
-
-      - name: Setup Python environment on EC2
-        run: |
-          ssh ec2 "bash -s" << 'ENDSSH'
-          set -e
-          cd /home/ubuntu/hate-speech-detection
-
-          # Install python3-venv if missing (Ubuntu 26.04 / PEP 668)
-          if ! dpkg -s python3-venv > /dev/null 2>&1; then
-            echo "Installing python3-venv..."
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq python3-venv python3-full
-          fi
-
-          # Create venv if it doesn't exist
-          if [ ! -f "venv/bin/activate" ]; then
-            echo "Creating virtual environment..."
-            python3 -m venv venv
-          fi
-
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          echo "Dependencies installed OK"
-          ENDSSH
 
       - name: Write environment variables
         run: |
@@ -116,45 +90,95 @@ jobs:
           ENVFILE
           ENDSSH
 
-      - name: Restart application
+      - name: Setup supervisord and start app
         run: |
           ssh ec2 "bash -s" << 'ENDSSH'
           set -e
           cd /home/ubuntu/hate-speech-detection
-          source venv/bin/activate
-
           mkdir -p logs
 
-          # Stop existing process if running
-          if [ -f app.pid ]; then
-            kill "$(cat app.pid)" 2>/dev/null || true
-            rm -f app.pid
-          fi
+          # Install supervisor into conda env if missing
+          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          conda activate ml
+          pip install supervisor --quiet
 
-          # Launch Gradio app
-          nohup python app.py > logs/app.log 2>&1 &
-          echo $! > app.pid
+          # Write start.sh (activates conda env then runs app)
+          cat > start.sh << 'EOF'
+          #!/bin/bash
+          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          conda activate ml
+          exec python app.py
+          EOF
+          chmod +x start.sh
 
-          sleep 5
-          if kill -0 "$(cat app.pid)" 2>/dev/null; then
-            echo "App started successfully (PID: $(cat app.pid))"
+          # Write supervisord.conf
+          cat > supervisord.conf << 'EOF'
+          [supervisord]
+          logfile=logs/supervisord.log
+          pidfile=logs/supervisord.pid
+          nodaemon=false
+
+          [supervisorctl]
+          serverurl=unix:///tmp/supervisor-hate-speech.sock
+
+          [unix_http_server]
+          file=/tmp/supervisor-hate-speech.sock
+
+          [rpcinterface:supervisor]
+          supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+          [program:hate-speech-app]
+          command=/home/ubuntu/hate-speech-detection/start.sh
+          directory=/home/ubuntu/hate-speech-detection
+          autostart=true
+          autorestart=true
+          stderr_logfile=logs/app.error.log
+          stdout_logfile=logs/app.log
+          stdout_logfile_maxbytes=50MB
+          stdout_logfile_backups=5
+          environment=HOME="/home/ubuntu",USER="ubuntu"
+          EOF
+
+          # Gracefully reload if supervisord is already running, else start fresh
+          SUPERVISORD_BIN="$(conda run -n ml which supervisord)"
+          SUPERVISORCTL_BIN="$(conda run -n ml which supervisorctl)"
+
+          if "$SUPERVISORCTL_BIN" -c supervisord.conf status > /dev/null 2>&1; then
+            echo "supervisord already running — reloading..."
+            "$SUPERVISORCTL_BIN" -c supervisord.conf reread
+            "$SUPERVISORCTL_BIN" -c supervisord.conf update
+            "$SUPERVISORCTL_BIN" -c supervisord.conf restart hate-speech-app
           else
-            echo "ERROR: App failed to start"
-            tail -30 logs/app.log
-            exit 1
+            echo "Starting supervisord..."
+            # Kill any stale pid
+            if [ -f logs/supervisord.pid ]; then
+              kill "$(cat logs/supervisord.pid)" 2>/dev/null || true
+              rm -f logs/supervisord.pid
+            fi
+            "$SUPERVISORD_BIN" -c supervisord.conf
           fi
+
+          echo "Waiting for app to start..."
+          sleep 15
           ENDSSH
 
       - name: Verify deployment
         run: |
           ssh ec2 "bash -s" << 'ENDSSH'
+          set -e
+          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          conda activate ml
           cd /home/ubuntu/hate-speech-detection
-          sleep 10
-          if kill -0 "$(cat app.pid)" 2>/dev/null; then
+
+          STATUS=$(supervisorctl -c supervisord.conf status hate-speech-app)
+          echo "$STATUS"
+
+          if echo "$STATUS" | grep -q "RUNNING"; then
             echo "Deployment verified - app is running"
           else
-            echo "Deployment FAILED - app crashed after start"
+            echo "Deployment FAILED - app is not running"
             tail -50 logs/app.log
+            tail -20 logs/app.error.log
             exit 1
           fi
           ENDSSH
