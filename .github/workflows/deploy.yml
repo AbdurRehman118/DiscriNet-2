@@ -47,17 +47,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
-          cat >> ~/.ssh/config <<EOF
-          Host ec2
-            HostName ${{ secrets.EC2_HOST }}
-            User ${{ secrets.EC2_USER }}
-            IdentityFile ~/.ssh/ec2_key.pem
-            StrictHostKeyChecking no
-          EOF
+          head -1 ~/.ssh/ec2_key.pem | grep -q "BEGIN" || { echo "ERROR: PEM key malformed"; exit 1; }
+          echo "Host ec2"                                        >> ~/.ssh/config
+          echo "  HostName ${{ secrets.EC2_HOST }}"              >> ~/.ssh/config
+          echo "  User ${{ secrets.EC2_USER }}"                  >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/ec2_key.pem"               >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no"                      >> ~/.ssh/config
+          echo "  UserKnownHostsFile /dev/null"                  >> ~/.ssh/config
+          chmod 644 ~/.ssh/config
+          ssh ec2 "echo 'SSH connection OK'"
 
       - name: Sync code to EC2
         run: |
