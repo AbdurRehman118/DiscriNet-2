@@ -43,7 +43,7 @@ except Exception as e:
 model.to(DEVICE)
 model.eval()
 
-# 2. Policy
+# 2. Policies
 try:
     policy_data = torch.load(POLICY_INDEX, map_location=DEVICE)
     policy_embs = F.normalize(policy_data["embeddings"].to(DEVICE), p=2, dim=-1)
