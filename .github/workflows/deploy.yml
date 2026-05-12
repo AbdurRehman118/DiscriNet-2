@@ -90,16 +90,19 @@ jobs:
           K9: ${{ secrets.GEMINI_API_KEY_9 }}
           K10: ${{ secrets.GEMINI_API_KEY_10 }}
         run: |
-          ENV_CONTENT=""
+          ENV_FILE=$(mktemp)
+          KEY_COUNT=0
           for i in $(seq 1 10); do
             VAR="K${i}"
             VAL="${!VAR}"
             if [ -n "$VAL" ]; then
-              ENV_CONTENT="${ENV_CONTENT}GEMINI_API_KEY_${i}=${VAL}\n"
+              echo "GEMINI_API_KEY_${i}=${VAL}" >> "$ENV_FILE"
+              KEY_COUNT=$((KEY_COUNT + 1))
             fi
           done
-          echo "Writing $(echo -e "$ENV_CONTENT" | grep -c 'GEMINI') key(s) to .env"
-          ssh ec2 "printf '${ENV_CONTENT}' > /home/ubuntu/hate-speech-detection/.env"
+          echo "Writing ${KEY_COUNT} key(s) to .env"
+          scp -q "$ENV_FILE" ec2:/home/ubuntu/hate-speech-detection/.env
+          rm -f "$ENV_FILE"
 
       - name: Setup supervisord and start app
         run: |
