@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
@@ -69,31 +69,44 @@ jobs:
             --exclude '.git' \
             --exclude '__pycache__' \
             --exclude '.env' \
+            --exclude 'venv/' \
+            --exclude 'logs/' \
             --exclude 'runs/' \
             --exclude 'results/' \
             --exclude 'policies/*.pt' \
+            --exclude 'app.pid' \
             --exclude '*.pyc' \
             ./ ec2:${{ env.EC2_APP_DIR }}/
 
-      - name: Install dependencies on EC2
+      - name: Setup Python environment on EC2
         run: |
-          ssh ec2 << 'ENDSSH'
-          cd ${{ env.EC2_APP_DIR }}
+          ssh ec2 "bash -s" << 'ENDSSH'
+          set -e
+          cd /home/ubuntu/hate-speech-detection
 
-          # Ensure Python venv exists
-          if [ ! -d "venv" ]; then
+          # Install python3-venv if missing (Ubuntu 26.04 / PEP 668)
+          if ! dpkg -s python3-venv > /dev/null 2>&1; then
+            echo "Installing python3-venv..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq python3-venv python3-full
+          fi
+
+          # Create venv if it doesn't exist
+          if [ ! -f "venv/bin/activate" ]; then
+            echo "Creating virtual environment..."
             python3 -m venv venv
           fi
-          source venv/bin/activate
 
+          source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
+          echo "Dependencies installed OK"
           ENDSSH
 
       - name: Write environment variables
         run: |
-          ssh ec2 << 'ENDSSH'
-          cat > ${{ env.EC2_APP_DIR }}/.env << 'ENVFILE'
+          ssh ec2 "bash -s" << 'ENDSSH'
+          cat > /home/ubuntu/hate-speech-detection/.env << 'ENVFILE'
           GEMINI_API_KEY_1=${{ secrets.GEMINI_API_KEY_1 }}
           GEMINI_API_KEY_2=${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3=${{ secrets.GEMINI_API_KEY_3 }}
@@ -105,22 +118,25 @@ jobs:
 
       - name: Restart application
         run: |
-          ssh ec2 << 'ENDSSH'
-          cd ${{ env.EC2_APP_DIR }}
+          ssh ec2 "bash -s" << 'ENDSSH'
+          set -e
+          cd /home/ubuntu/hate-speech-detection
           source venv/bin/activate
+
+          mkdir -p logs
 
           # Stop existing process if running
           if [ -f app.pid ]; then
-            kill $(cat app.pid) 2>/dev/null || true
+            kill "$(cat app.pid)" 2>/dev/null || true
             rm -f app.pid
           fi
 
-          # Launch Gradio app with nohup
+          # Launch Gradio app
           nohup python app.py > logs/app.log 2>&1 &
           echo $! > app.pid
 
           sleep 5
-          if kill -0 $(cat app.pid) 2>/dev/null; then
+          if kill -0 "$(cat app.pid)" 2>/dev/null; then
             echo "App started successfully (PID: $(cat app.pid))"
           else
             echo "ERROR: App failed to start"
@@ -131,10 +147,10 @@ jobs:
 
       - name: Verify deployment
         run: |
-          ssh ec2 << 'ENDSSH'
-          cd ${{ env.EC2_APP_DIR }}
+          ssh ec2 "bash -s" << 'ENDSSH'
+          cd /home/ubuntu/hate-speech-detection
           sleep 10
-          if kill -0 $(cat app.pid) 2>/dev/null; then
+          if kill -0 "$(cat app.pid)" 2>/dev/null; then
             echo "Deployment verified - app is running"
           else
             echo "Deployment FAILED - app crashed after start"
