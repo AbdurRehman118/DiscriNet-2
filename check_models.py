@@ -1,7 +1,11 @@
 import google.generativeai as genai
 import os
+from dotenv import load_dotenv
 
-GEMINI_KEY = "REDACTED"
+load_dotenv()
+GEMINI_KEY = os.getenv("GEMINI_API_KEY_1")
+if not GEMINI_KEY:
+    raise ValueError("No GEMINI_API_KEY_1 found in .env")
 genai.configure(api_key=GEMINI_KEY)
 
 print("Listing supported models...")

@@ -78,17 +78,28 @@ jobs:
             ./ ec2:${{ env.EC2_APP_DIR }}/
 
       - name: Write environment variables
+        env:
+          K1: ${{ secrets.GEMINI_API_KEY_1 }}
+          K2: ${{ secrets.GEMINI_API_KEY_2 }}
+          K3: ${{ secrets.GEMINI_API_KEY_3 }}
+          K4: ${{ secrets.GEMINI_API_KEY_4 }}
+          K5: ${{ secrets.GEMINI_API_KEY_5 }}
+          K6: ${{ secrets.GEMINI_API_KEY_6 }}
+          K7: ${{ secrets.GEMINI_API_KEY_7 }}
+          K8: ${{ secrets.GEMINI_API_KEY_8 }}
+          K9: ${{ secrets.GEMINI_API_KEY_9 }}
+          K10: ${{ secrets.GEMINI_API_KEY_10 }}
         run: |
-          ssh ec2 "bash -s" << 'ENDSSH'
-          cat > /home/ubuntu/hate-speech-detection/.env << 'ENVFILE'
-          GEMINI_API_KEY_1=${{ secrets.GEMINI_API_KEY_1 }}
-          GEMINI_API_KEY_2=${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_API_KEY_3=${{ secrets.GEMINI_API_KEY_3 }}
-          GEMINI_API_KEY_4=${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_API_KEY_5=${{ secrets.GEMINI_API_KEY_5 }}
-          GEMINI_API_KEY_6=${{ secrets.GEMINI_API_KEY_6 }}
-          ENVFILE
-          ENDSSH
+          ENV_CONTENT=""
+          for i in $(seq 1 10); do
+            VAR="K${i}"
+            VAL="${!VAR}"
+            if [ -n "$VAL" ]; then
+              ENV_CONTENT="${ENV_CONTENT}GEMINI_API_KEY_${i}=${VAL}\n"
+            fi
+          done
+          echo "Writing $(echo -e "$ENV_CONTENT" | grep -c 'GEMINI') key(s) to .env"
+          ssh ec2 "printf '${ENV_CONTENT}' > /home/ubuntu/hate-speech-detection/.env"
 
       - name: Setup supervisord and start app
         run: |

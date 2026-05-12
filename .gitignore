@@ -66,5 +66,14 @@ logs/
 .cache/
 huggingface/
 
-# Deployment artifacts 
+# Deployment artifacts
 app.pid
+
+# Gradio auto-generated certs/config
+.gradio/
+
+# Secrets / credentials
+*.pem
+*.key
+*credentials*
+*secret*
