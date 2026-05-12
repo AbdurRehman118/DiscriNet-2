@@ -65,23 +65,45 @@ except:
     DYN_THRESH = 0.25 # Typical CLIP Sim threshold
     DYN_WEIGHT = 0.5
 
-# 4. OCR & RAG Reasoner (Gemini)
+# 4. Gemini Key Pool — rotate across keys on rate-limit errors
 import google.generativeai as genai
+import itertools, threading
 
-# Use environment variable
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_KEY:
-    raise ValueError("GEMINI_API_KEY not found. Please ensure it is set in your .env file.")
+GEMINI_KEYS = []
+for i in range(1, 20):
+    k = os.getenv(f"GEMINI_API_KEY_{i}")
+    if k and k.strip():
+        GEMINI_KEYS.append(k.strip())
+if not GEMINI_KEYS:
+    single = os.getenv("GEMINI_API_KEY", "").strip()
+    if single:
+        GEMINI_KEYS.append(single)
+if not GEMINI_KEYS:
+    raise ValueError("No GEMINI_API_KEY_* keys found in .env")
+
+_key_cycle = itertools.cycle(GEMINI_KEYS)
+_key_lock = threading.Lock()
+
+def next_gemini_key() -> str:
+    with _key_lock:
+        return next(_key_cycle)
+
+print(f"Loaded {len(GEMINI_KEYS)} Gemini API key(s).")
+
+GEMINI_KEY = next_gemini_key()
 genai.configure(api_key=GEMINI_KEY)
 
 print("Initializing LangChain RAG Pipeline...")
 try:
-    langchain_rag.init_rag(api_key=GEMINI_KEY, policies_path="policies/example_policies.jsonl")
+    langchain_rag.init_rag(
+        api_keys=GEMINI_KEYS,
+        policies_path="policies/example_policies.jsonl",
+    )
     print("RAG Pipeline initialized.")
 except Exception as e:
     print(f"RAG Init Error: {e}")
 
-print("Initialized Gemini OCR & Reasoner Integration.")
+print(f"Gemini integration ready ({len(GEMINI_KEYS)} keys in rotation).")
 
 # ── Inline SVG Icons (Lucide-style, 18px) ────────────────────────────────────
 _ICONS = {
@@ -158,34 +180,39 @@ def predict(image, text, progress=gr.Progress()):
     # Ensure text fallback
     if not text: text = ""
     
-    # OCR Fallback (Gemini) - Only if an image exists and text is empty
+    # OCR Fallback (Gemini) — rotate keys on rate-limit errors
     if not skip_ocr and text.strip() == "":
         progress(0.2, desc="No caption found — running Gemini OCR...")
         print("No text provided. Running Gemini OCR...")
         success = False
         last_error = ""
-        
-        # List of models to try (fallback strategy for Free Tier)
-        GEMINI_MODELS = ["gemini-flash-latest"]
+        ocr_model = "gemini-flash-latest"
 
-        for model_name in GEMINI_MODELS:
-            print(f"Trying Gemini Model: {model_name}...")
+        for attempt in range(len(GEMINI_KEYS)):
+            key = next_gemini_key()
+            print(f"[OCR] Attempt {attempt+1}/{len(GEMINI_KEYS)} with key ...{key[-6:]}")
             try:
-                gemini_model = genai.GenerativeModel(model_name)
-                # Gemini accepts PIL Image directly
-                response = gemini_model.generate_content(["Extract all text from this image exactly as it appears.", image])
+                genai.configure(api_key=key)
+                gemini_model = genai.GenerativeModel(ocr_model)
+                response = gemini_model.generate_content(
+                    ["Extract all text from this image exactly as it appears.", image]
+                )
                 text = response.text.strip()
-                ocr_source = f"(Extracted via {model_name})"
-                print(f"Gemini Extraction Success: {text}")
+                ocr_source = f"(Extracted via {ocr_model})"
+                print(f"[OCR] Success with key ...{key[-6:]}")
                 success = True
-                break # Stop if successful
+                break
             except Exception as e:
-                print(f"Failed with {model_name}: {e}")
+                err_str = str(e).lower()
+                print(f"[OCR] Failed key ...{key[-6:]}: {e}")
                 last_error = str(e)
-        
+                if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                    continue
+                break
+
         if not success:
-             text = " "
-             ocr_source = f"(OCR Failed: All models exhausted. Last error: {last_error[:50]}...)"
+            text = " "
+            ocr_source = f"(OCR failed after {len(GEMINI_KEYS)} keys. Last: {last_error[:50]}...)"
         
     if not text: text = " " # Fallback if everything else fails
     

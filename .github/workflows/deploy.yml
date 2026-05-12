@@ -90,7 +90,12 @@ jobs:
         run: |
           ssh ec2 << 'ENDSSH'
           cat > ${{ env.EC2_APP_DIR }}/.env << 'ENVFILE'
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_1=${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2=${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3=${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_API_KEY_4=${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_API_KEY_5=${{ secrets.GEMINI_API_KEY_5 }}
+          GEMINI_API_KEY_6=${{ secrets.GEMINI_API_KEY_6 }}
           ENVFILE
           ENDSSH
 

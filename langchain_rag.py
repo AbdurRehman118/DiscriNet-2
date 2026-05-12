@@ -4,18 +4,21 @@ langchain_rag.py
 LangChain RAG Pipeline for Hate Speech Policy Explanation.
 
 Architecture:
-  1. Policies (JSONL)  →  GoogleGenerativeAIEmbeddings  →  FAISS VectorStore  (built once at startup)
-  2. Input text        →  MMR Retriever (top-k=3)        →  retrieved policies
-  3. Retrieved docs + input  →  Gemini LLM (fallback ladder)  →  natural-language explanation
+  1. Policies (JSONL)  →  HuggingFace Embeddings  →  FAISS VectorStore  (built once at startup)
+  2. Input text        →  MMR Retriever (top-k=3)  →  retrieved policies
+  3. Retrieved docs + input  →  Gemini LLM (key rotation + model fallback)  →  explanation
 
 Quota Optimisation:
-  • LLM model fallback ladder:  gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b
-  • @lru_cache(maxsize=128) on explanation function  →  zero API calls for repeated inputs
-  • Skip LLM entirely if confidence < 0.15  →  static response for obvious non-hateful content
+  • Multi-key rotation: cycles through all available GEMINI_API_KEY_* on 429/quota errors
+  • LLM model fallback ladder per key: gemini-flash-latest → gemini-2.0-flash → gemini-1.5-flash-8b
+  • @lru_cache(maxsize=128) on explanation function
+  • Skip LLM entirely if confidence < 0.15
 """
 
 import json
 import os
+import itertools
+import threading
 from functools import lru_cache
 from typing import List, Optional
 
@@ -78,7 +81,17 @@ EXPLANATION:"""
 # ── Module-level globals (built once at startup) ───────────────────────────────
 _vectorstore: Optional[FAISS] = None
 _retriever = None
-_api_key: Optional[str] = None
+_api_keys: List[str] = []
+_key_cycle = None
+_key_lock = threading.Lock()
+
+
+def _next_key() -> str:
+    global _key_cycle
+    with _key_lock:
+        if _key_cycle is None:
+            raise RuntimeError("RAG not initialised. Call init_rag() first.")
+        return next(_key_cycle)
 
 
 def load_policies(policies_path: str) -> List[Document]:
@@ -104,13 +117,18 @@ def load_policies(policies_path: str) -> List[Document]:
     return docs
 
 
-def init_rag(api_key: str, policies_path: str, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+def init_rag(api_keys, policies_path: str, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
     """
     Build the FAISS vector store from policy documents.
+    api_keys: single key (str) or list of keys for rotation.
     """
-    global _vectorstore, _retriever, _api_key
+    global _vectorstore, _retriever, _api_keys, _key_cycle
 
-    _api_key = api_key
+    if isinstance(api_keys, str):
+        api_keys = [api_keys]
+    _api_keys = list(api_keys)
+    _key_cycle = itertools.cycle(_api_keys)
+    print(f"[RAG] {len(_api_keys)} Gemini key(s) loaded for rotation.")
 
     print(f"[RAG] Initialising Local HuggingFace embeddings ({embedding_model})...")
     # This runs locally on CPU and bypasses all 403 API errors
@@ -147,43 +165,57 @@ def _build_prompt(text: str, prediction_label: str, confidence: float, context: 
     )
 
 
+def _is_quota_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return any(tok in err for tok in ("429", "quota", "resource_exhausted", "rate limit"))
+
+
 def _call_llm_with_fallback(prompt: str) -> str:
     """
-    Call Gemini LLM with automatic fallback on quota errors.
-    Tries models in order: gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b
+    Call Gemini LLM with key rotation + model fallback.
+    For each key, tries models in order. On quota errors, rotates to the next key.
     """
     last_error = ""
-    for model_name in RAG_LLM_MODELS:
-        try:
-            print(f"[RAG] Trying LLM: {model_name}...")
-            llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=_api_key,
-                temperature=0.2,
-                max_output_tokens=1024, # Increased to prevent cutoffs
-            )
-            # Use StrOutputParser to safely handle all response types (lists, chunks, etc.)
-            chain = llm | StrOutputParser()
-            explanation = chain.invoke(prompt)
-            
-            print(f"[RAG] Success with {model_name}.")
-            return explanation.strip()
-        except (ResourceExhausted, ServiceUnavailable) as e:
-            print(f"[RAG] {model_name} quota exceeded: {e}. Trying next model...")
-            last_error = str(e)
-            continue
-        except Exception as e:
-            # Non-quota error — propagate after logging
-            err_str = str(e).lower()
-            if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
-                print(f"[RAG] {model_name} quota error (HTTP): {e}. Trying next model...")
+    tried_keys = 0
+    max_key_attempts = len(_api_keys)
+
+    while tried_keys < max_key_attempts:
+        key = _next_key()
+        key_tag = f"...{key[-6:]}"
+        tried_keys += 1
+
+        for model_name in RAG_LLM_MODELS:
+            try:
+                print(f"[RAG] Key {key_tag} / model {model_name}...")
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=key,
+                    temperature=0.2,
+                    max_output_tokens=1024,
+                )
+                chain = llm | StrOutputParser()
+                explanation = chain.invoke(prompt)
+                print(f"[RAG] Success: key {key_tag}, model {model_name}.")
+                return explanation.strip()
+
+            except (ResourceExhausted, ServiceUnavailable) as e:
+                print(f"[RAG] Quota error on {key_tag}/{model_name}: {e}")
                 last_error = str(e)
                 continue
-            print(f"[RAG] Non-quota error with {model_name}: {e}")
-            last_error = str(e)
-            break
 
-    return f"⚠️ RAG explanation unavailable (all models exhausted). Last error: {last_error[:80]}"
+            except Exception as e:
+                last_error = str(e)
+                if _is_quota_error(e):
+                    print(f"[RAG] Rate-limit on {key_tag}/{model_name}: {e}")
+                    continue
+                print(f"[RAG] Non-quota error on {key_tag}/{model_name}: {e}")
+                break
+        else:
+            print(f"[RAG] All models exhausted for key {key_tag}, rotating key...")
+            continue
+        break
+
+    return f"RAG explanation unavailable ({tried_keys} keys exhausted). Last error: {last_error[:80]}"
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
