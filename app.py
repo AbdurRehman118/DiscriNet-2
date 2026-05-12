@@ -36,11 +36,12 @@ try:
         model.clip = get_peft_model(model.clip, cfg)
 
     model.load_state_dict(ckpt["model"], strict=False)
-    model.to(DEVICE)
-    model.eval()
     print("MMBT Model loaded.")
 except Exception as e:
     print(f"Error loading MMBT: {e}")
+
+model.to(DEVICE)
+model.eval()
 
 # 2. Policy
 try:
@@ -67,8 +68,10 @@ except:
 # 4. OCR & RAG Reasoner (Gemini)
 import google.generativeai as genai
 
-# Use environment variable or fallback to provided key
-GEMINI_KEY = os.getenv("GEMINI_API_KEY", "REDACTED")
+# Use environment variable
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_KEY:
+    raise ValueError("GEMINI_API_KEY not found. Please ensure it is set in your .env file.")
 genai.configure(api_key=GEMINI_KEY)
 
 print("Initializing LangChain RAG Pipeline...")
@@ -81,31 +84,32 @@ except Exception as e:
 print("Initialized Gemini OCR & Reasoner Integration.")
 
 def predict(image, text, progress=gr.Progress()):
-    if image is None: return "### ⚠️ Please upload an image to begin."
-    
+    ocr_source = "" # Initialize to avoid UnboundLocalError
+    if image is None:
+        if not text or text.strip() == "":
+            return "### ⚠️ Please provide at least a caption or an image to begin."
+        # Create a blank white image if no image is provided but text is (placeholder for multimodal model)
+        image = Image.new('RGB', (224, 224), color='white')
+        ocr_source = "(Text-only analysis: No image provided)"
+        skip_ocr = True
+    else:
+        skip_ocr = False
+
     progress(0.1, desc="🚀 Initializing detection pipeline...")
     
-    # OCR Fallback (Gemini)
-    ocr_source = ""
     # Ensure text fallback
     if not text: text = ""
     
-    # OCR Fallback (Gemini)
-    ocr_source = ""
-    # Ensure text fallback
-    if not text: text = ""
-    
-    # List of models to try (fallback strategy for Free Tier)
-    GEMINI_MODELS = [
-        "gemini-flash-latest",            # Alias to stable flash
-    ]
-
-    if text.strip() == "":
+    # OCR Fallback (Gemini) - Only if an image exists and text is empty
+    if not skip_ocr and text.strip() == "":
         progress(0.2, desc="🔍 No caption found. Running Gemini OCR...")
         print("No text provided. Running Gemini OCR...")
         success = False
         last_error = ""
         
+        # List of models to try (fallback strategy for Free Tier)
+        GEMINI_MODELS = ["gemini-flash-latest"]
+
         for model_name in GEMINI_MODELS:
             print(f"Trying Gemini Model: {model_name}...")
             try:
@@ -120,13 +124,12 @@ def predict(image, text, progress=gr.Progress()):
             except Exception as e:
                 print(f"Failed with {model_name}: {e}")
                 last_error = str(e)
-                # Continue to next model
         
         if not success:
              text = " "
              ocr_source = f"(OCR Failed: All models exhausted. Last error: {last_error[:50]}...)"
         
-    if not text: text = " " # Fallback if OCR fails
+    if not text: text = " " # Fallback if everything else fails
     
     progress(0.4, desc="🧬 Fusing multimodal CLIP features...")
     # Prepare Input
@@ -179,19 +182,25 @@ def predict(image, text, progress=gr.Progress()):
                 match_source = "Text Match"
 
         # --- RAG Reasoner ---
-        label = "HATEFUL" if prob_final > 0.5 else "NON-HATEFUL"
+        initial_label = "HATEFUL" if prob_final > 0.5 else "NON-HATEFUL"
         
         progress(0.8, desc="🧠 Consultative Gemini Reasoner active...")
         print(f"Calling RAG Reasoner for: {text[:50]}...")
-        reasoning, matched_policies = langchain_rag.get_rag_explanation(text, label, prob_final)
+        reasoning, matched_policies, final_label = langchain_rag.get_rag_explanation(text, initial_label, prob_final)
         
         progress(1.0, desc="✅ Analysis complete!")
         
         # --- Rich Markdown Formatting ---
-        badge_color = "#ff4b4b" if label == "HATEFUL" else "#00c853"
-        badge_html = f'<div style="background-color: {badge_color}; color: white; padding: 12px 24px; border-radius: 12px; display: inline-block; font-weight: 800; font-size: 22px; margin-bottom: 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">{label}</div>'
+        if final_label == "HATEFUL":
+            badge_color = "#ff4b4b" # Red
+        elif final_label == "INAPPROPRIATE":
+            badge_color = "#ffa500" # Orange
+        else:
+            badge_color = "#00c853" # Green
+            
+        badge_html = f'<div style="background-color: {badge_color}; color: white; padding: 12px 24px; border-radius: 12px; display: inline-block; font-weight: 800; font-size: 22px; margin-bottom: 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">{final_label}</div>'
         
-        policy_section_title = "⚖️ Policy Violations" if label == "HATEFUL" else "⚖️ Contextual Policy Review"
+        policy_section_title = "⚖️ Policy Violations" if final_label == "HATEFUL" or final_label == "INAPPROPRIATE" else "⚖️ Contextual Policy Review"
         policy_list = "\n".join([f"- **{p.split('.')[0]}** - {'.'.join(p.split('.')[1:]).strip()}" for p in matched_policies])
         
         result_md = f"""
@@ -223,101 +232,177 @@ def predict(image, text, progress=gr.Progress()):
     except Exception as e:
         return f"### ❌ Error during inference\n{e}"
 
-# --- CUSTOM CSS ---
+# --- PREMIUM CUSTOM CSS ---
 CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;500;600&display=swap');
 
 :root {
-    --primary: #ff4b4b;
-    --secondary: #2d3436;
-    --font-main: 'Inter', sans-serif;
+    --primary: #FF3CAC;
+    --primary-gradient: linear-gradient(225deg, #FF3CAC 0%, #784BA0 50%, #2B86C5 100%);
+    --bg-dark: #0f172a;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
     --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
 }
 
-body { font-family: var(--font-main); }
+.gradio-container {
+    background: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 100%) !important;
+    color: #f8fafc !important;
+}
 
 .container { 
-    max-width: 1300px; 
-    margin: auto; 
-    padding: 2rem 1rem; 
+    max-width: 1200px !important; 
+    margin: auto !important; 
+    padding: 3rem 1.5rem !important; 
 }
-.glass-panel {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 24px;
-    padding: 28px;
-    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.glass-panel:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.55);
-}
+
 .title-text {
-    font-family: var(--font-heading);
-    font-size: 3.2rem !important;
+    font-family: var(--font-heading) !important;
+    font-size: 3.5rem !important;
     font-weight: 800 !important;
-    background: linear-gradient(135deg, #ff4b4b 0%, #ff8a8a 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 0.2rem !important;
-    letter-spacing: -1.5px;
+    text-align: center !important;
+    background: linear-gradient(135deg, #fff 30%, #94a3b8 100%);
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    letter-spacing: -0.04em !important;
+    margin-bottom: 0.5rem !important;
 }
-.header-box {
-    text-align: center;
-    margin-bottom: 4rem;
+
+.subtitle-text {
+    font-family: var(--font-body) !important;
+    font-size: 1.1rem !important;
+    text-align: center !important;
+    color: #94a3b8 !important;
+    margin-bottom: 3.5rem !important;
+    font-weight: 400 !important;
 }
+
+.glass-panel {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 24px !important;
+    padding: 2rem !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+}
+
+.input-box {
+    border: 1px solid var(--glass-border) !important;
+    background: rgba(0, 0, 0, 0.2) !important;
+    border-radius: 12px !important;
+}
+
 .analyze-btn {
-    background: linear-gradient(135deg, #ff4b4b 0%, #c0392b 100%) !important;
+    background: var(--primary-gradient) !important;
     border: none !important;
+    border-radius: 14px !important;
+    padding: 0.75rem !important;
+    font-family: var(--font-heading) !important;
     font-weight: 700 !important;
     font-size: 1.1rem !important;
-    height: 3.5rem !important;
-    border-radius: 14px !important;
-    box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3) !important;
-    transition: all 0.2s ease !important;
+    color: white !important;
+    box-shadow: 0 10px 20px -5px rgba(255, 60, 172, 0.4) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    cursor: pointer !important;
 }
+
 .analyze-btn:hover {
-    transform: scale(1.02);
-    box-shadow: 0 6px 20px rgba(255, 75, 75, 0.4) !important;
+    transform: translateY(-2px) scale(1.01) !important;
+    box-shadow: 0 15px 30px -5px rgba(255, 60, 172, 0.6) !important;
+}
+
+.analyze-btn:active {
+    transform: translateY(0) !important;
+}
+
+.pro-tip-card {
+    background: rgba(59, 130, 246, 0.05) !important;
+    border: 1px solid rgba(59, 130, 246, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 1.5rem !important;
+    margin-top: 2rem !important;
+}
+
+.pro-tip-title {
+    color: #60a5fa !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.5rem !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+/* Custom Result Card Styling */
+.result-card {
+    border-left: 4px solid var(--primary) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    padding: 1.5rem !important;
+    border-radius: 0 16px 16px 0 !important;
 }
 """
 
-with gr.Blocks() as demo:
+with gr.Blocks(css=CSS) as demo:
     with gr.Column(elem_classes=["container"]):
-        with gr.Column(elem_classes=["header-box"]):
-            gr.Markdown("# 🛡️ Discri-Net: Hate Speech Guard", elem_classes=["title-text"])
-            gr.Markdown("### Multimodal Meme Analysis with Gemini RAG Reasoning")
+        # Header Section
+        with gr.Column():
+            gr.Markdown("# 🛡️ Discri-Net", elem_classes=["title-text"])
+            gr.Markdown("ADVANCED MULTIMODAL HATE SPEECH GUARD WITH GEMINI RAG REASONING", elem_classes=["subtitle-text"])
 
-        with gr.Row():
-            with gr.Column(scale=2):
+        with gr.Row(equal_height=True):
+            # Left Column: Inputs
+            with gr.Column(scale=11):
                 with gr.Column(elem_classes=["glass-panel"]):
-                    input_img = gr.Image(type="pil", label="Meme Image", interactive=True)
-                    input_text = gr.Textbox(
-                        label="⌨️ Meme Text (Caption)", 
-                        placeholder="Leave empty for Gemini OCR extraction...",
-                        lines=3
+                    gr.Markdown("### 📥 Input Content")
+                    input_img = gr.Image(
+                        type="pil", 
+                        label="Meme / Image", 
+                        interactive=True,
+                        elem_classes=["input-box"]
                     )
-                    btn = gr.Button("🚀 Analyze Meme", variant="primary", size="lg", elem_classes=["analyze-btn"])
+                    input_text = gr.Textbox(
+                        label="⌨️ Caption (Meme Text)", 
+                        placeholder="Provide text for analysis or leave empty for OCR...",
+                        lines=3,
+                        elem_classes=["input-box"]
+                    )
+                    btn = gr.Button("🚀 Start Deep Analysis", variant="primary", elem_classes=["analyze-btn"])
                     
-                    gr.Markdown("#### 💡 Pro Tips")
-                    gr.Markdown("""
-                    - **Precision**: Higher resolution = Better OCR accuracy.
-                    - **Logic**: The RAG Reasoner uses NLI to maps memes to official safety policies.
-                    - **Speed**: Built on CLIP-VIT-Large for production-grade feature extraction.
-                    """)
+                    with gr.Column(elem_classes=["pro-tip-card"]):
+                        gr.Markdown("#### 💡 Intelligence Overview", elem_classes=["pro-tip-title"])
+                        gr.Markdown("""
+                        - **Multimodal Engine**: Fuses CLIP vision features with MMBT text encoders.
+                        - **Dynamic RAG**: Consults 50+ localized safety policies via FAISS vector search.
+                        - **Political Guard**: Enhanced logic for identifying political personalities and neutral discourse.
+                        - **OCR Pipeline**: Automated text extraction via Gemini Pro Vision.
+                        """)
 
-            with gr.Column(scale=3):
+            # Right Column: Outputs
+            with gr.Column(scale=13):
                 with gr.Column(elem_classes=["glass-panel"]):
-                    output_md = gr.Markdown("Analysis results will appear here after clicking Analyze.")
+                    gr.Markdown("### 📊 AI Analysis Results")
+                    output_md = gr.Markdown(
+                        "Ready for analysis. Please upload a meme or provide text to begin.",
+                        elem_id="results-display"
+                    )
                     
-        btn.click(fn=predict, inputs=[input_img, input_text], outputs=output_md)
+        # Footer
+        gr.Markdown(
+            "<div style='text-align: center; margin-top: 3rem; color: #64748b; font-size: 0.9rem;'>"
+            "Powered by Gemini 2.0 & CLIP ViT-Large • Research Edition v2.1"
+            "</div>"
+        )
+
+        btn.click(
+            fn=predict, 
+            inputs=[input_img, input_text], 
+            outputs=output_md,
+            api_name="analyze"
+        )
 
 if __name__ == "__main__":
     demo.launch(
         share=True,
-        theme=gr.themes.Soft(primary_hue="red", secondary_hue="slate"),
+        theme=gr.themes.Default(primary_hue="blue", secondary_hue="slate"),
         css=CSS
     )

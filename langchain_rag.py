@@ -50,7 +50,7 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 SKIP_THRESHOLD = 0.15
 
 # ── RAG Prompt Template ────────────────────────────────────────────────────────
-RAG_PROMPT_TEMPLATE = """You are an expert moderator specialising in hate speech policy enforcement.
+RAG_PROMPT_TEMPLATE = """You are an expert moderator specialising in hate speech and content safety policy enforcement.
 You have been given relevant policy documents and a piece of content to analyse.
 
 === RETRIEVED HATE SPEECH POLICIES ===
@@ -61,13 +61,16 @@ Text: "{question}"
 Current Prediction: {prediction_label} (Confidence: {confidence:.1%})
 
 === YOUR TASK ===
-Based ONLY on the retrieved policies above, provide a concise 2-3 sentence explanation.
-You MUST strictly distinguish between the following categories in your response:
-1. [HATEFUL]: Content that violates hate speech policies.
-2. [UNWANTED / INAPPROPRIATE]: Content that is NSFW, Vulgar, or Gore (NOT Hate Speech).
-3. [NON-HATEFUL / NORMAL]: Content that is Satire, Politics, Art, or everyday speech.
+Based on the retrieved policies and your internal knowledge of safety guidelines, provide a concise 2-3 sentence explanation.
+You MUST strictly start your response with one of these tags:
+1. [HATEFUL]: Content that violates hate speech policies (targeting protected groups with dehumanization, calls for violence, or slurs).
+2. [INAPPROPRIATE]: Content that is NSFW, Vulgar, Gore, OR involves political personalities/references (unless vulgar/hateful language is used against them).
+3. [NON-HATEFUL]: Content that is Satire, general Politics (without specific attacks), Art, or everyday speech.
 
-Cite specific policies by ID. If the content is "UNWANTED", explicitly state that it is safe from a hate-speech perspective but inappropriate for general audiences.
+SPECIAL INSTRUCTIONS:
+- Political figures/references: Mark as [INAPPROPRIATE] if they are the primary subject, UNLESS vulgar/hateful language is used (then mark as [HATEFUL]).
+- If the content is purely political commentary without personal attacks, it is [NON-HATEFUL].
+- Distinguish between Hate Speech (protected groups) and general inappropriateness.
 
 EXPLANATION:"""
 
@@ -191,19 +194,21 @@ def get_rag_explanation(text: str, prediction_label: str, confidence: float) -> 
     Generate a policy-grounded LLM explanation for the given content.
 
     Returns:
-        (explanation: str, retrieved_policies: list[str])
+        (explanation: str, retrieved_policies: list[str], final_label: str)
 
     Optimisations:
         - @lru_cache: identical (text, label, confidence) returns cached result instantly
         - SKIP_THRESHOLD: if confidence < 0.15, skip LLM entirely (clearly non-hateful)
     """
+    import re
+    
     # Early exit for obviously non-hateful content
     if confidence < SKIP_THRESHOLD:
         static_msg = (
             "Content is clearly non-hateful (confidence below 15%). "
             "No significant hate speech policy violations detected."
         )
-        return static_msg, []
+        return static_msg, [], prediction_label
 
     # Retrieve relevant policies
     try:
@@ -220,13 +225,19 @@ def get_rag_explanation(text: str, prediction_label: str, confidence: float) -> 
             
         context = "\n\n".join(context_parts)
     except Exception as e:
-        return f"⚠️ Policy retrieval failed: {e}", []
+        return f"⚠️ Policy retrieval failed: {e}", [], prediction_label
 
     # Build prompt and call LLM with fallback
     prompt = _build_prompt(text, prediction_label, confidence, context)
     explanation = _call_llm_with_fallback(prompt)
 
-    return explanation, display_parts
+    # Extract final label from LLM response (e.g., "[INAPPROPRIATE]: ...")
+    final_label = prediction_label
+    match = re.search(r"\[(HATEFUL|INAPPROPRIATE|NON-HATEFUL)\]", explanation)
+    if match:
+        final_label = match.group(1)
+
+    return explanation, display_parts, final_label
 
 
 def get_retrieved_policies_for_display(text: str) -> List[str]:
